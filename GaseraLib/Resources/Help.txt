@@ -1,0 +1,22 @@
+
+/h              - Shows help.
+/out <file>     - Outputs the hash to the specified file.
+                  (it will not output if the existing hash is the
+                  same hash for blank password.)
+
+-----------------------------------
+
+   NOTE: This program will output the format once it detects the
+presence of Shadow Defender, and the data required.
+
+   Format: 
+      $shadow_defender$*[GUID]*[Hash]
+
+   Where:
+      $shadow_defender$  : The target name. (which in case, Shadow Defender)
+      GUID               : A unique GUID generated during Shadow Defender
+                           installation. Acts as a salt.
+      Hash               : A UTF-16 Little Endian encoded, MD5-digested hash.
+
+   Example:
+      $shadow_defender$*{7394742e-95e4-4f56-9d3f-2e3022dd8e8a}*d1d953620fa4ab77e566590b81aec42e
