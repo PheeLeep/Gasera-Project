@@ -11,7 +11,9 @@ there are two ways to output, depending on user's provided command argument:
 
 The Novel Hash Format follows the format that is commonly use for compatibility
 with known password recovery tools like Hashcat, and it is possible to have
-number of hashes that has the same format, in a single file.
+number of different hashes that has the same format, in a single file by
+adding '-fA' on the commandline argument or press 'A' when the specified
+file exist, in order to append.
 
 Format:
 ```
