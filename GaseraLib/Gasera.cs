@@ -5,13 +5,22 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
+using static GaseraLib.IOClass;
 using static GaseraLib.WinNatives;
 
 namespace GaseraLib {
 
+    // Some of SonarLint warnings were disable.
+#pragma warning disable S2583, S2589
+
     public static class Gasera {
 
         private static string prevTitle = "";
+        private static FileExistAction fca_outFile = FileExistAction.None;
+        private static FileExistAction fca_outGUIDSalt = FileExistAction.None;
+        private static bool fileConflictSet = false;
+        private static bool forceWriteOnBlankPassword = false;
 
         /// <summary>
         /// Prints the welcome page of the program, and the corresponding .NET version.
@@ -36,27 +45,61 @@ namespace GaseraLib {
         public static void Execute(string[] args) {
             try {
 
+                // I'll split the codeflow into regions, for better view and organized.
+                #region Stage 1 (Parameter and File Checks)
+
                 // Shadow Defender is for Windows-only, so we should target Windows.
                 if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                     throw new PlatformNotSupportedException("[!]: This program is for Windows only.");
 
-                FileInfo filePath = null;
+                // Parameter checks.
+                if (args.Length == 0 || args[0].Equals("/h")) {
+                    ShowHelp();
+                    return;
+                }
 
-                // Loop out for the arguments.
-                if (args.Length > 0) {
-                    switch (args[0]) {
+                FileInfo outFile = null;
+                bool write_as_novel_hash_format = false;
+
+                for (int i = 0; i < args.Length; i++) {
+                    switch (args[i]) {
                         case "/out":
-                            if (args.Length < 2)
+                            if ((i + 1) >= args.Length)
                                 throw new InvalidOperationException("[!]: No output file specified.");
-                            filePath = new FileInfo(args[1]);
+                            i++;
+                            outFile = new FileInfo(args[i]);
                             break;
-                        case "/h":
-                            ShowHelp();
-                            return;
+                        case "--use-novel-hash":
+                            if (write_as_novel_hash_format) break;
+                            write_as_novel_hash_format = true;
+                            break;
+                        case "-fO":
+                            SetFileConflictAction(FileExistAction.Overwrite);
+                            break;
+                        case "-fA":
+                            SetFileConflictAction(FileExistAction.Append);
+                            break;
+                        case "-i":
+                            forceWriteOnBlankPassword = true;
+                            break;
                         default:
                             throw new InvalidOperationException("[!]: No parameter exist to type '" + args[0] + "'.");
                     }
                 }
+
+                if (outFile == null)
+                    throw new InvalidOperationException("[!]: No output file specified.");
+                string safeFileName = outFile.Name.Replace(outFile.Extension, "");
+                FileInfo guidFile = new FileInfo(Path.Combine(outFile.Directory.FullName, safeFileName + "-guid" + outFile.Extension));
+
+                // Check for file outputs' existence first.
+                if (fca_outFile == FileExistAction.None && outFile.Exists && !FileExistChoice(outFile.Name, out fca_outFile))
+                    return;
+                if (!write_as_novel_hash_format && fca_outGUIDSalt == FileExistAction.None
+                    && guidFile.Exists && !FileExistChoice(guidFile.Name, out fca_outGUIDSalt))
+                    return;
+                #endregion
+                #region Stage 2 (Program Lookup and Hash Acquire)
 
                 // Shadow Defender stores unique GUID and the path, to the registry.
                 Console.WriteLine("[*]: Harvesting required data from Shadow Defender's registry...");
@@ -66,6 +109,7 @@ namespace GaseraLib {
 
                 if (!Guid.TryParse(guid, out _))
                     throw new InvalidOperationException("[x]: Malformed GUID parse found.");
+
                 Console.WriteLine("[i]: Shadow Defender GUID found!");
 
                 if (!Directory.Exists(path) || !File.Exists(path + "\\user.dat"))
@@ -73,37 +117,34 @@ namespace GaseraLib {
 
                 // Acquire the hash from the specified path, then output the result.
                 if (!GetDefenderMD5Hash(path + "\\user.dat", out string hash)) return;
+                if (!Regex.IsMatch(hash, "^[0-9a-fA-F]{32}$"))
+                    throw new InvalidOperationException("[x]: Invalid hash format found.");
 
                 Console.WriteLine("[i]: Necessary data has been acquired.");
+                #endregion
+                #region Stage 3 (Output)
+                string outputStr = write_as_novel_hash_format ? "$shadow_defender$*" + guid + "*" + hash : hash;
 
-                string outputStr = "$shadow_defender$*" + guid + "*" + hash;
                 Console.WriteLine("\nResult:\n" + new string('-', 20));
                 Console.WriteLine("Shadow Defender GUID: " + guid);
                 Console.WriteLine("MD5 UTF-16 Password Hash: " + hash);
-                Console.WriteLine("\nFormat hash: " + outputStr + "\n");
                 Console.WriteLine(new string('-', 20));
 
                 // Checks if the hash is the same as the blank password's hash.
-                // If not, write out the format hash to the file.
-                if (!CheckForBlankPassword(guid, hash)) {
-                    try {
-                        if (filePath != null) {
-                            if (filePath.Exists) {
-                                if (!Choice("Do you want to overwrite the specified file?")) return;
-                                filePath.Delete();
-                            }
+                // If yes and the 'forceWriteOnBlankPassword' is false,
+                // exit the program for obvious reason.
+                if (CheckForBlankPassword(guid, hash) && !forceWriteOnBlankPassword) return;
 
-                            using (StreamWriter sw = new StreamWriter(filePath.FullName)) {
-                                sw.Write(outputStr);
-                                sw.Flush();
-                                Console.WriteLine("[i]: Data has been written.");
-                            }
-                        }
-                    } catch (Exception ex) {
-                        throw new InvalidOperationException("[x]: Couldn't write the output. (" + ex.Message + ")");
-                    }
+                if (!WriteTextToFile(outFile, outputStr, fca_outFile)) return;
+                if (!write_as_novel_hash_format) {
+                    if (!WriteTextToFile(guidFile, guid, fca_outGUIDSalt)) 
+                        return;
+                    Console.WriteLine("\nIf you're using Hashcat, use '-a 1' or '-a 6', and make sure");
+                    Console.WriteLine("the GUID salt file is specified first before the wordlist or mask pattern.");
+                    Console.WriteLine("\nRun this program with '/h' for help and more details.\n");
                 }
-
+                #endregion
+                Console.WriteLine("[i]: Done.");
             } catch (Exception ex) {
                 Console.WriteLine(ex.Message);
             } finally {
@@ -111,7 +152,19 @@ namespace GaseraLib {
                 Console.Title = prevTitle;
             }
         }
-        
+
+        /// <summary>
+        /// Sets the values of <see cref="fca_outFile"/> and <see cref="fca_outGUIDSalt"/>
+        /// </summary>
+        /// <param name="fca">The <see cref="FileExistAction"/> value to be set.</param>
+        /// <remarks>This method will work once. Calling again will never set the two values.</remarks>
+        private static void SetFileConflictAction(FileExistAction fca) {
+            if (fileConflictSet || fca == FileExistAction.None) return;
+            // Set chaining.
+            fca_outFile = fca_outGUIDSalt = fca;
+            fileConflictSet = true;
+        }
+
         /// <summary>
         /// Retrieves Shadow Defender's Password Hash from the specified path.
         /// </summary>
@@ -120,7 +173,7 @@ namespace GaseraLib {
         /// <returns>Returns true if found, and outputs the value to <paramref name="outHash"/>; otherwise, false.</returns>
         private static bool GetDefenderMD5Hash(string userDatPath, out string outHash) {
             outHash = "";
-            Console.WriteLine("[i]: Acquiring hash...");
+            Console.WriteLine("[*]: Acquiring hash...");
             StringBuilder hash = new StringBuilder(255);
             GetPrivateProfileString("common", "hash", "", hash, 32768, userDatPath);
             if (string.IsNullOrEmpty(hash.ToString())) {
@@ -159,7 +212,7 @@ namespace GaseraLib {
             // by the administrator, encoding into bytes using UTF-16LE (little endian)
             // before hashing it with MD5.
 
-            StringBuilder hash = new StringBuilder(255);
+            StringBuilder hash = new StringBuilder();
             hash.Append(guid + password);
             using (MD5 md5 = MD5.Create()) {
                 byte[] utf16data = Encoding.Unicode.GetBytes(hash.ToString());
@@ -203,23 +256,6 @@ namespace GaseraLib {
         /// </summary>
         private static void ShowHelp() {
             Console.WriteLine(Properties.Resources.Help);
-        }
-
-        /// <summary>
-        /// Gets the respond from the user.
-        /// </summary>
-        /// <param name="message">A string message to print before user-decision.</param>
-        /// <returns>Returns a boolean value representing user's decision.</returns>
-        private static bool Choice(string message) {
-            ConsoleKey response;
-            do {
-                Console.Write($"{message} [y/n]: ");
-                response = Console.ReadKey().Key;
-                if (response != ConsoleKey.Enter)
-                    Console.WriteLine();
-            } while (response != ConsoleKey.Y && response != ConsoleKey.N);
-
-            return response == ConsoleKey.Y;
         }
     }
 }

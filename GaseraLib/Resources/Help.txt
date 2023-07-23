@@ -1,22 +1,36 @@
 
-/h              - Shows help.
-/out <file>     - Outputs the hash to the specified file.
-                  (it will not output if the existing hash is the
-                  same hash for blank password.)
+Gasera [/out <file>] [options]
+--------------------------------
+/out <file>       - Writes the hash to the specified file path.                    
+                    By default, the program writes two files. The MD5(UTF16LE()) hash
+                    target, and the GUID that acts as a salt.
 
------------------------------------
+Options:
 
-   NOTE: This program will output the format once it detects the
-presence of Shadow Defender, and the data required.
+/h                - Shows help.
+                    
+--use-novel-hash  - Use the new hash format, instead of writing two files. (hash and GUID salt). 
+                    (see the GitHub repo documentation for more details about the format.)
 
-   Format: 
-      $shadow_defender$*[GUID]*[Hash]
+-i                - Don't exit if the hash is for blank password, and proceed to writing
+                    the output anyway.
 
-   Where:
-      $shadow_defender$  : The target name. (which in case, Shadow Defender)
-      GUID               : A unique GUID generated during Shadow Defender
-                           installation. Acts as a salt.
-      Hash               : A UTF-16 Little Endian encoded, MD5-digested hash.
+-fO               - Force to overwrite the file output.
+-fA               - Force to append the file output with new value.
 
-   Example:
-      $shadow_defender$*{7394742e-95e4-4f56-9d3f-2e3022dd8e8a}*d1d953620fa4ab77e566590b81aec42e
+--------------------------------
+
+For cracking the hash (GUID salt and Hash files.):
+
+Hashcat:
+
+Use '-a 1' for dictionary attack, or '-a 6' for mask attack. It's important to specify GUID file
+first before the wordlist file or mask pattern, to prepend it with each password to guess.
+
+The hash type is 70 '(md5(utf16le($pass)))'.
+
+Example:
+   hashcat -m 70 shadow-hash.txt -a 1 shadow-hash-guid.txt rockyou.txt
+                       ^                       ^               ^
+                [Target Hash File]     [GUID Salt File]    [Wordlist]
+
