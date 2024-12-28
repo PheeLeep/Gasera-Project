@@ -7,17 +7,15 @@ Gasera [/out <file>] [options]
 
 Options:
 
-/h                - Shows help.
-                    
+/h                - Shows help.     
 --use-novel-hash  - Use the new hash format, instead of writing two files. (hash and GUID salt). 
                     (see the GitHub repo documentation for more details about the format.)
-
 -i                - Don't exit if the hash is for blank password, and proceed to writing
                     the output anyway.
-
 -fO               - Force to overwrite the file output.
 -fA               - Force to append the file output with new value.
-
+--enforce-64      - Enforce the program to use 64-bit registry
+--enforce-32      - Enforce the program to use 32-bit registry
 --------------------------------
 
 For cracking the hash (GUID salt and Hash files.):

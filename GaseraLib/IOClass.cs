@@ -49,11 +49,11 @@ namespace GaseraLib {
                     }
                 }
 
-                if (!f.Exists && fca== FileExistAction.Append)
+                if (!f.Exists && fca == FileExistAction.Append)
                     f.Open(FileMode.Create).Close(); // Create a file, if append was specified but the file doesn't exist.
 
                 using (StreamWriter sw = new StreamWriter(f.FullName, fca == FileExistAction.Append)) {
-                    if (fca== FileExistAction.Append && f.Length > 0)
+                    if (fca == FileExistAction.Append && f.Length > 0)
                         sw.Write("\n");
                     sw.Write(text);
                     sw.Flush();

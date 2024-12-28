@@ -11,9 +11,6 @@ using static GaseraLib.WinNatives;
 
 namespace GaseraLib {
 
-    // Some of SonarLint warnings were disable.
-#pragma warning disable S2583, S2589
-
     public static class Gasera {
 
         private static string prevTitle = "";
@@ -21,18 +18,23 @@ namespace GaseraLib {
         private static FileExistAction fca_outGUIDSalt = FileExistAction.None;
         private static bool fileConflictSet = false;
         private static bool forceWriteOnBlankPassword = false;
+        private static RegistryView regView = RegistryView.Default;
 
         /// <summary>
         /// Prints the welcome page of the program, and the corresponding .NET version.
         /// </summary>
-        /// <param name="netType">The type of the .NET variant that a program was used to compile.</param>
+        /// <param name="netType">The type of the .NET variant that a program was used to compile.
+        /// </param>
         /// <param name="netVersion">The .NET version.</param>
         public static void PrintWelcome(string netType, string netVersion) {
             Console.WriteLine(new string('-', 50));
             Console.WriteLine("Gasera | Shadow Defender Password Hash Acquirer.");
-            Console.WriteLine("Running in " + netType + " " + netVersion);
-            Console.WriteLine("\nAuthor: PheeLeep");
+            Console.WriteLine($"Running in {netType} {netVersion}\n");
+            Console.WriteLine("Author: PheeLeep");
             Console.WriteLine("GitHub: https://github.com/PheeLeep/Gasera-Project");
+            Console.WriteLine(new string('-', 50));
+            Console.WriteLine($"Computer Architecture: {(Environment.Is64BitOperatingSystem ? "64 bit" : "32 bit")}");
+            Console.WriteLine($"Program Architecture: {(Environment.Is64BitProcess ? "64 bit" : "32 bit")}");
             Console.WriteLine(new string('-', 50));
             prevTitle = Console.Title;
             Console.Title = "Gasera | Shadow Defender Password Hash Acquirer for " + netType;
@@ -82,15 +84,22 @@ namespace GaseraLib {
                         case "-i":
                             forceWriteOnBlankPassword = true;
                             break;
+                        case "--enforce-64":
+                            regView = RegistryView.Registry64;
+                            break;
+                        case "--enforce-32":
+                            regView = RegistryView.Registry32;
+                            break;
                         default:
-                            throw new InvalidOperationException("[!]: No parameter exist to type '" + args[0] + "'.");
+                            throw new InvalidOperationException($"[!]: No parameter exist to type '{args[0]}'.");
                     }
                 }
 
                 if (outFile == null)
                     throw new InvalidOperationException("[!]: No output file specified.");
+
                 string safeFileName = outFile.Name.Replace(outFile.Extension, "");
-                FileInfo guidFile = new FileInfo(Path.Combine(outFile.Directory.FullName, safeFileName + "-guid" + outFile.Extension));
+                FileInfo guidFile = new FileInfo(Path.Combine(outFile.Directory.FullName, $"{safeFileName}-guid{outFile.Extension}"));
 
                 // Check for file outputs' existence first.
                 if (fca_outFile == FileExistAction.None && outFile.Exists && !FileExistChoice(outFile.Name, out fca_outFile))
@@ -98,7 +107,9 @@ namespace GaseraLib {
                 if (!write_as_novel_hash_format && fca_outGUIDSalt == FileExistAction.None
                     && guidFile.Exists && !FileExistChoice(guidFile.Name, out fca_outGUIDSalt))
                     return;
+
                 #endregion
+
                 #region Stage 2 (Program Lookup and Hash Acquire)
 
                 // Shadow Defender stores unique GUID and the path, to the registry.
@@ -137,7 +148,7 @@ namespace GaseraLib {
 
                 if (!WriteTextToFile(outFile, outputStr, fca_outFile)) return;
                 if (!write_as_novel_hash_format) {
-                    if (!WriteTextToFile(guidFile, guid, fca_outGUIDSalt)) 
+                    if (!WriteTextToFile(guidFile, guid, fca_outGUIDSalt))
                         return;
                     Console.WriteLine("\nIf you're using Hashcat, use '-a 1' or '-a 6', and make sure");
                     Console.WriteLine("the GUID salt file is specified first before the wordlist or mask pattern.");
@@ -146,7 +157,8 @@ namespace GaseraLib {
                 #endregion
                 Console.WriteLine("[i]: Done.");
             } catch (Exception ex) {
-                Console.WriteLine(ex.Message);
+                Console.WriteLine($"[X]: An error occurred during the execution.\n\t{ex.Message}");
+                Console.WriteLine("[!]: Abort.");
             } finally {
                 // Revert to the previous title.
                 Console.Title = prevTitle;
@@ -177,7 +189,7 @@ namespace GaseraLib {
             StringBuilder hash = new StringBuilder(255);
             GetPrivateProfileString("common", "hash", "", hash, 32768, userDatPath);
             if (string.IsNullOrEmpty(hash.ToString())) {
-                Console.WriteLine("[x]: Couldn't acquire a hash. (" + new Win32Exception(Marshal.GetLastWin32Error()).Message + ")");
+                Console.WriteLine($"[x]: Couldn't acquire a hash. ({new Win32Exception(Marshal.GetLastWin32Error()).Message})");
                 return false;
             }
             outHash = hash.ToString();
@@ -194,7 +206,7 @@ namespace GaseraLib {
             string blankpwdHash = HashPassword(guid);
             if (blankpwdHash.Equals(hash.ToString())) {
                 Console.WriteLine("[i]: Password was not set.");
-                Console.WriteLine("Key: @BLANKPWD >> Hash: " + blankpwdHash);
+                Console.WriteLine($"\tKey: @BLANKPWD >> Hash: {blankpwdHash}");
                 return true;
             }
             return false;
@@ -233,22 +245,18 @@ namespace GaseraLib {
         /// </returns>
         private static bool GetValueFromRegistry(string regPath, string valName, out string value) {
             value = "";
-            RegistryKey defenderKey = null;
             try {
-                defenderKey = Registry.LocalMachine.OpenSubKey(regPath);
-                if (defenderKey == null)
-                    throw new InvalidOperationException("Registry path of '" + regPath + "' is not exist or not accessible.");
+                RegistryKey baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, regView);
+                RegistryKey defenderKey = baseKey.OpenSubKey(regPath) ??
+                                            throw new InvalidOperationException($"Registry path of '{regPath}' is not exist or not accessible.");
                 object obj = defenderKey.GetValue(valName) ??
-                    throw new InvalidOperationException("Registry value of '" + valName + "' is not found.");
+                    throw new InvalidOperationException($"Registry value of '{valName}' is not found.");
                 value = obj.ToString();
                 return true;
             } catch (Exception ex) {
-                Console.WriteLine("[x]: Failed to get a registry value. (" + ex.Message + ")");
+                Console.WriteLine($"[x]: Failed to get a registry value. ({ex.Message})");
                 return false;
-            } finally {
-                defenderKey?.Close();
             }
-
         }
 
         /// <summary>
