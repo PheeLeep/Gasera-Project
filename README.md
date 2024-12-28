@@ -72,6 +72,8 @@ Gasera [/out <file>] [options]
 
     -fO               - Force to overwrite the file output.
     -fA               - Force to append the file output with new value.
+    --enforce-64      - Enforce the program to use 64-bit registry
+    --enforce-32      - Enforce the program to use 32-bit registry
 ```
 
 ## How to Use for Password Recovery?
